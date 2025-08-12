@@ -1,0 +1,41 @@
+[
+  {
+    "model": "assumptions.discountcurve",
+    "pk": 1,
+    "fields": {
+      "code": "LI_FLAT_3",
+      "name": "Locked-in Flat 3%",
+      "curve_type": "LOCKED_IN",
+      "compounding": "ANNUAL",
+      "rates": [0.03, 0.03, 0.03, 0.03, 0.03],
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "assumptions.discountcurve",
+    "pk": 2,
+    "fields": {
+      "code": "CURR_FLAT_4",
+      "name": "Current Flat 4%",
+      "curve_type": "CURRENT",
+      "compounding": "ANNUAL",
+      "rates": [0.04, 0.04, 0.04, 0.04, 0.04],
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "assumptions.riskadjustmentparams",
+    "pk": 1,
+    "fields": {
+      "code": "RA_TOY_10PC",
+      "name": "RA = 10% × expected claims",
+      "method": "TOY_FACTOR",
+      "factor": "0.1000",
+      "notes": "Phase 1 toy RA; replace later with CL or CoC.",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  }
+]
