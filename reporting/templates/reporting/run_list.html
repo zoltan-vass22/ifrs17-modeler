@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Runs</title>
+  </head>
+  <body>
+    <h1>Result sets (latest first)</h1>
+    <table border="1" cellpadding="6">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Code</th>
+          <th>Group</th>
+          <th>Portfolio</th>
+          <th>Product</th>
+          <th>Scenario</th>
+          <th>Meas. date</th>
+          <th>Currency</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in runs %}
+        <tr>
+          <td><a href="{% url 'reporting:run_detail' r.id %}">{{ r.id }}</a></td>
+          <td>{{ r.code }}</td>
+          <td>{{ r.group.code }}</td>
+          <td>{{ r.group.portfolio.code }}</td>
+          <td>{{ r.group.product.code }}</td>
+          <td>{{ r.scenario_name }}</td>
+          <td>{{ r.measurement_date }}</td>
+          <td>{{ r.currency }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">No runs yet. Execute <code>python manage.py run_demo</code>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>
