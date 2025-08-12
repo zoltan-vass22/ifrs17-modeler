@@ -21,3 +21,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("reporting/", include("reporting.urls")),
 ]
+
+admin.site.site_header = "IFRS 17 Modeler — Admin"
+admin.site.site_title = "IFRS 17 Modeler"
+admin.site.index_title = "Administration"
