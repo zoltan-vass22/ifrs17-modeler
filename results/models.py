@@ -47,6 +47,12 @@ class ResultSet(TimeStampedMixin, CodeNameMixin):
         indexes = [
             models.Index(fields=["group", "scenario_name", "measurement_date"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "scenario_name", "measurement_date"],
+                name="uniq_group_scenario_measurement_date",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.code} — {self.group.code} — {self.scenario_name} @ {self.measurement_date}"

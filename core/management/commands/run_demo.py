@@ -8,7 +8,6 @@ from contracts.models import ContractGroup
 from assumptions.models import DiscountCurve, CurveType, RiskAdjustmentParams, RAMethod
 from results.models import ResultSet, RollforwardLine, Component
 
-
 # numeric precision for Decimal outputs
 getcontext().prec = 28
 
@@ -26,7 +25,12 @@ def _dfs(rates: list[float], start_index: int = 0) -> list[Decimal]:
     return dfs
 
 
-def _pv(cashflows: list[Decimal], dfs: list[Decimal], include_t0: bool = False, t0_cash: Decimal = Decimal("0.0")) -> Decimal:
+def _pv(
+    cashflows: list[Decimal],
+    dfs: list[Decimal],
+    include_t0: bool = False,
+    t0_cash: Decimal = Decimal("0.0"),
+) -> Decimal:
     """
     Present value of cashflows at end-of-period points using provided DFs.
     Optionally include a time-0 cash flow (undiscounted).
@@ -44,7 +48,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # --- 1) Load inputs ---------------------------------------------------
-        group = ContractGroup.objects.select_related("portfolio", "product").first()
+        group = (
+            ContractGroup.objects.select_related("portfolio", "product")
+            .order_by("id")
+            .first()
+        )
         if not group:
             raise CommandError("No ContractGroup found. Load contracts fixtures first.")
 
@@ -59,18 +67,28 @@ class Command(BaseCommand):
         if ra_params.method != RAMethod.TOY_FACTOR:
             raise CommandError("This demo expects RAMethod=TOY_FACTOR in Phase 1.")
 
-        # --- 2) Build toy projections (Phase 1 simplifications) ---------------
-        n = min(group.coverage_term_years, len(curr_curve.rates))
-        if n <= 0:
-            raise CommandError("Invalid projection length (coverage term or curve length).")
+        # --- 2) Guardrails on projection length ------------------------------
+        coverage_n = group.coverage_term_years
+        li_len = len(li_curve.rates or [])
+        curr_len = len(curr_curve.rates or [])
 
+        if li_len < coverage_n or curr_len < coverage_n:
+            raise CommandError(
+                f"Discount curve length too short for coverage term: "
+                f"coverage_term_years={coverage_n}, locked_in_len={li_len}, current_len={curr_len}. "
+                f"Extend your fixtures (add more rates) or shorten the term."
+            )
+
+        n = coverage_n  # require full term availability for the demo
+
+        # --- 3) Build toy projections (Phase 1 simplifications) ---------------
         # Premiums: spread written_premium level over premium_term_years (end of period)
         prem_per = Decimal(group.written_premium) / Decimal(group.premium_term_years or 1)
         premiums = [prem_per if t < group.premium_term_years else Decimal("0.0") for t in range(n)]
 
         # Claims & expenses: simple proportions of premium
-        claims = [prem_per * Decimal("0.60") if t < n else Decimal("0.0") for t in range(n)]
-        expenses = [prem_per * Decimal("0.05") if t < n else Decimal("0.0") for t in range(n)]
+        claims = [prem_per * Decimal("0.60") for _ in range(n)]
+        expenses = [prem_per * Decimal("0.05") for _ in range(n)]
 
         # Acquisition cash flow: 10% of written premium at time 0 (outflow)
         acq_t0 = Decimal(group.written_premium) * Decimal("0.10")
@@ -84,9 +102,14 @@ class Command(BaseCommand):
         dfs_curr_1 = _dfs(curr_curve.rates, 1) if n > 1 else []
         dfs_li = _dfs(li_curve.rates, 0)
 
-        # --- 3) Initial recognition (t = 0) ----------------------------------
+        # --- 4) Initial recognition (t = 0) ----------------------------------
         pv_in = _pv([Decimal(x) for x in premiums], dfs_curr_0)
-        pv_out = _pv([Decimal(c) + Decimal(e) for c, e in zip(claims, expenses)], dfs_curr_0, include_t0=True, t0_cash=acq_t0)
+        pv_out = _pv(
+            [Decimal(c) + Decimal(e) for c, e in zip(claims, expenses)],
+            dfs_curr_0,
+            include_t0=True,
+            t0_cash=acq_t0,
+        )
         pv_ra = _pv([Decimal(x) for x in ra_vec], dfs_curr_0)
         fcf0 = pv_out - pv_in + pv_ra
 
@@ -95,24 +118,30 @@ class Command(BaseCommand):
         if fcf0 <= 0:
             csm0 = -fcf0  # profitable → CSM
         else:
-            loss_comp0 = fcf0  # onerous (Phase 1: we won't use it further)
+            loss_comp0 = fcf0  # onerous (not used further in Phase 1)
 
-        # --- 4) ResultSet header ---------------------------------------------
-        rs = ResultSet.objects.create(
-            code=f"DEMO_{group.code}_{timezone.now().strftime('%Y%m%d%H%M%S')}",
-            name=f"Demo run for {group.name}",
+        # --- 5) ResultSet header ---------------------------------------------
+        meas_date = timezone.now().date()
+        rs, _created = ResultSet.objects.update_or_create(
             group=group,
-            currency=group.currency,
             scenario_name="BASE",
-            measurement_date=timezone.now().date(),
-            notes="Phase 1 demo: toy PVs; 60% claims, 5% expenses, 10% t0 acquisition; RA = factor × claims.",
+            measurement_date=meas_date,
+            defaults={
+                "code": f"DEMO_{group.code}_{meas_date.isoformat()}",
+                "name": f"Demo run for {group.name}",
+                "currency": group.currency,
+                "notes": "Phase 1 demo: toy PVs; 60% claims, 5% expenses, 10% t0 acquisition; RA = factor × claims.",
+            },
         )
 
+        rs.lines.all().delete()
         # Helper to add a line
         def add_line(period: int, component: str, amount: Decimal):
             RollforwardLine.objects.update_or_create(
-                result=rs, period_index=period, component=component,
-                defaults={"amount": amount.quantize(Decimal('0.000001'))},
+                result=rs,
+                period_index=period,
+                component=component,
+                defaults={"amount": amount.quantize(Decimal("0.000001"))},
             )
 
         # t=0 lines
@@ -123,7 +152,7 @@ class Command(BaseCommand):
         add_line(0, Component.INIT_CSM, csm0)
         add_line(0, Component.INIT_LOSS_COMP, loss_comp0)
 
-        # --- 5) First subsequent period (t = 1) ------------------------------
+        # --- 6) First subsequent period (t = 1) ------------------------------
         # Coverage-units proxy: equal units → release 1/n of CSM after interest
         csm_open = csm0
         li_rate_0 = Decimal(str(li_curve.rates[0]))
@@ -140,7 +169,7 @@ class Command(BaseCommand):
         # Expected service amounts in period 1
         exp_claims_1 = Decimal(claims[0])
         exp_exp_1 = Decimal(expenses[0])
-        acq_amort_1 = acq_t0 * (Decimal("1.0") / Decimal(n))  # toy: spread t0 acquisition over coverage units
+        acq_amort_1 = acq_t0 * (Decimal("1.0") / Decimal(n))  # spread t0 acquisition over coverage units
 
         # Insurance revenue/expenses (toy mapping)
         revenue_1 = csm_rel + ra_rel + exp_claims_1 + exp_exp_1 + acq_amort_1
@@ -149,7 +178,10 @@ class Command(BaseCommand):
 
         # BEL opening (remaining PV excl. CSM) at start of year 1 (i.e., periods 1..N)
         pv_in_rem_0 = _pv([Decimal(x) for x in premiums[1:]], dfs_curr_1)
-        pv_out_rem_0 = _pv([Decimal(c) + Decimal(e) for c, e in zip(claims[1:], expenses[1:])], dfs_curr_1)
+        pv_out_rem_0 = _pv(
+            [Decimal(c) + Decimal(e) for c, e in zip(claims[1:], expenses[1:])],
+            dfs_curr_1,
+        )
         pv_ra_rem_0 = _pv([Decimal(x) for x in ra_vec[1:]], dfs_curr_1)
         bel_open_1 = pv_out_rem_0 - pv_in_rem_0 + pv_ra_rem_0
 
@@ -161,7 +193,10 @@ class Command(BaseCommand):
         dfs_curr_2 = _dfs(curr_curve.rates, 2) if n > 2 else []
         if n > 2:
             pv_in_rem_1 = _pv([Decimal(x) for x in premiums[2:]], dfs_curr_2)
-            pv_out_rem_1 = _pv([Decimal(c) + Decimal(e) for c, e in zip(claims[2:], expenses[2:])], dfs_curr_2)
+            pv_out_rem_1 = _pv(
+                [Decimal(c) + Decimal(e) for c, e in zip(claims[2:], expenses[2:])],
+                dfs_curr_2,
+            )
             pv_ra_rem_1 = _pv([Decimal(x) for x in ra_vec[2:]], dfs_curr_2)
             bel_close_1 = pv_out_rem_1 - pv_in_rem_1 + pv_ra_rem_1
         else:
