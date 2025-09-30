@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
-from core.models import TimeStampedMixin, CodeNameMixin, Currency
+from ifrs_core.models import TimeStampedMixin, CodeNameMixin, Currency
 from contracts.models import ContractGroup
 
 

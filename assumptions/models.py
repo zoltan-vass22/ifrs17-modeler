@@ -1,6 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from core.models import TimeStampedMixin, CodeNameMixin
+from ifrs_core.models import TimeStampedMixin, CodeNameMixin
 
 
 class CurveType(models.TextChoices):

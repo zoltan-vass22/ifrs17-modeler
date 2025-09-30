@@ -39,7 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'assumptions',
     'contracts',
-    'core',
+    'ifrs_core',
     'engine',
     'reporting',
     'results',

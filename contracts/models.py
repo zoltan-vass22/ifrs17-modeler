@@ -1,5 +1,9 @@
 from django.db import models
-from core.models import TimeStampedMixin, CodeNameMixin, Currency
+from ifrs_core.models import TimeStampedMixin, CodeNameMixin, Currency
+from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
+from django.db.models import Q
+
 
 
 class MeasurementModel(models.TextChoices):
@@ -63,9 +67,9 @@ class ContractGroup(TimeStampedMixin, CodeNameMixin):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="groups")
     currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.HUF)
 
-    cohort_year = models.PositiveIntegerField()          # e.g., 2024
-    coverage_term_years = models.PositiveIntegerField()  # service period length
-    premium_term_years = models.PositiveIntegerField()   # <= coverage_term_years
+    cohort_year = models.PositiveIntegerField(validators=[MinValueValidator(1900)])  # be generous
+    coverage_term_years = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    premium_term_years = models.PositiveIntegerField(validators=[MinValueValidator(0)])
 
     premium_pattern = models.ForeignKey(
         PremiumPattern, on_delete=models.PROTECT, related_name="groups"
@@ -75,9 +79,9 @@ class ContractGroup(TimeStampedMixin, CodeNameMixin):
     )
 
     # Simple volumes at inception (toy)
-    policy_count = models.PositiveIntegerField(default=0)
-    sum_assured = models.DecimalField(max_digits=18, decimal_places=2, default=0)      # nominal
-    written_premium = models.DecimalField(max_digits=18, decimal_places=2, default=0)  # nominal
+    policy_count = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    sum_assured = models.DecimalField(max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    written_premium = models.DecimalField(max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)])
 
     class Meta:
         constraints = [
@@ -85,4 +89,20 @@ class ContractGroup(TimeStampedMixin, CodeNameMixin):
                 fields=["portfolio", "product", "cohort_year", "code"],
                 name="uniq_group_per_portfolio_product_year_code",
             ),
+            models.CheckConstraint(
+                check=Q(premium_term_years__lte=models.F("coverage_term_years")),
+                name="chk_premium_term_le_coverage_term",
+            ),
         ]
+        ordering = ("portfolio", "product", "cohort_year", "code")
+
+def clean(self):
+    errors = {}
+    if self.premium_term_years > self.coverage_term_years:
+        errors["premium_term_years"] = "Premium term must be ≤ coverage term."
+    if not self.currency:
+        errors["currency"] = "Currency is required."
+    if not self.code:
+        errors["code"] = "Code is required."
+    if errors:
+        raise ValidationError(errors)
