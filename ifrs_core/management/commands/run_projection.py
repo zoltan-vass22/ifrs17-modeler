@@ -126,11 +126,12 @@ class Command(BaseCommand):
             ra_close = ra_open - ra_rel
 
             # Service amounts (expected) in period t
+            exp_prem = premiums[t - 1]          # optional diagnostic (not used in IFRS revenue)
             exp_claims = claims[t - 1]
             exp_exp = expenses[t - 1]
-            acq_amort = acq_t0 * cu_share  # spread by CU
+            acq_amort = acq_t0 * cu_share       # spread by CU (toy)
 
-            # Revenue / service result
+            # Revenue / service result (IFRS toy mapping)
             revenue = csm_rel + ra_rel + exp_claims + exp_exp + acq_amort
             service_exp = exp_claims + exp_exp + acq_amort
             service_result = revenue - service_exp  # = CSM_rel + RA_rel
@@ -142,9 +143,10 @@ class Command(BaseCommand):
             pv_ra_rem = _pv(ra_vec[t:], dfs_curr_t)
             bel_open = pv_out_rem - pv_in_rem + pv_ra_rem
 
-            # Finance result approx: unwind on BEL_open at current r_{t-1} + CSM interest
+            # Finance result split: unwind on BEL_open (current) + interest on CSM (locked-in)
             curr_rate = Decimal(str(curr_curve.rates[t - 1]))
-            fin_result = bel_open * curr_rate + csm_int
+            bel_int = bel_open * curr_rate
+            fin_result = bel_int + csm_int
 
             # BEL close = PV of remaining (t+1..n-1)
             if t < n:
@@ -157,7 +159,7 @@ class Command(BaseCommand):
             else:
                 bel_close = Decimal("0.0")
 
-            # Persist lines for period t
+            # Persist lines for period t (rollforward balances)
             put(t, Component.CSM_OPEN, csm_open)
             put(t, Component.CSM_INT, csm_int)
             put(t, Component.CSM_REL, csm_rel)
@@ -170,9 +172,19 @@ class Command(BaseCommand):
             put(t, Component.BEL_OPEN, bel_open)
             put(t, Component.BEL_CLOSE, bel_close)
 
+            # Persist service detail
+            put(t, Component.PREM_CASH, exp_prem)
+            put(t, Component.CLAIMS, exp_claims)
+            put(t, Component.EXPENSES, exp_exp)
+            put(t, Component.ACQ_AMORT, acq_amort)
+
             put(t, Component.REV_SERVICE, revenue)
             put(t, Component.EXP_SERVICE, service_exp)
             put(t, Component.SRV_RESULT, service_result)
+
+            # Persist finance detail
+            put(t, Component.FIN_INT_CSM, csm_int)
+            put(t, Component.FIN_INT_BEL, bel_int)
             put(t, Component.FIN_RESULT, fin_result)
 
             # roll state

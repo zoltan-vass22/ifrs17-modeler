@@ -32,6 +32,16 @@ class Component(models.TextChoices):
 
     FIN_RESULT = "FIN_RESULT", "Insurance finance income/expense"
 
+    # Per-period service detail (t >= 1)
+    PREM_CASH = "PREM_CASH", "Premiums (expected cash, period)"
+    CLAIMS = "CLAIMS", "Expected claims (period)"
+    EXPENSES = "EXPENSES", "Expenses (period)"
+    ACQ_AMORT = "ACQ_AMORT", "Acquisition CF amortization (period)"
+
+    # Per-period finance detail (t >= 1)
+    FIN_INT_CSM = "FIN_INT_CSM", "Interest on CSM (locked-in)"
+    FIN_INT_BEL = "FIN_INT_BEL", "Interest on BEL (current)"
+
 
 class ResultSet(TimeStampedMixin, CodeNameMixin):
     """
