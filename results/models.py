@@ -68,6 +68,15 @@ class ResultSet(TimeStampedMixin, CodeNameMixin):
         return f"{self.code} — {self.group.code} — {self.scenario_name} @ {self.measurement_date}"
 
 
+class MovementType(models.TextChoices):
+    INIT = "INIT", "Initial measurement"
+    SERVICE = "SERVICE", "Insurance service"
+    FINANCE = "FINANCE", "Insurance finance"
+    OTHER = "OTHER", "Other"
+
+
+
+
 class RollforwardLine(models.Model):
     """
     One numeric output line for a period (t = 0 for initial recognition).
@@ -77,6 +86,13 @@ class RollforwardLine(models.Model):
     period_index = models.PositiveIntegerField(help_text="0 = initial recognition; 1..N = subsequent periods")
     component = models.CharField(max_length=32, choices=Component.choices)
     amount = models.DecimalField(max_digits=24, decimal_places=6, default=Decimal("0.0"))
+
+    movement_type = models.CharField(
+    max_length=10,
+    choices=MovementType.choices,
+    default=MovementType.OTHER,
+    db_index=True,
+)
 
     class Meta:
         indexes = [
@@ -91,3 +107,6 @@ class RollforwardLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.result.code} t={self.period_index} {self.component}: {self.amount}"
+    
+
+

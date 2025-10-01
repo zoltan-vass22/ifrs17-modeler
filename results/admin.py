@@ -4,7 +4,7 @@ from .models import ResultSet, RollforwardLine
 class RollforwardLineInline(admin.TabularInline):
     model = RollforwardLine
     extra = 0
-    fields = ("period_index", "component", "amount")
+    fields = ("period_index", "movement_type", "component", "amount")
     ordering = ("period_index", "component")
     show_change_link = False
 

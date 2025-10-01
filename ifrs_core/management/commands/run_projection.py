@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from contracts.models import ContractGroup
 from assumptions.models import DiscountCurve, CurveType, RiskAdjustmentParams, RAMethod
-from results.models import ResultSet, RollforwardLine, Component
+from results.models import ResultSet, RollforwardLine, Component, MovementType
 
 getcontext().prec = 28
 
@@ -93,19 +93,26 @@ class Command(BaseCommand):
         # Clear old lines
         rs.lines.all().delete()
 
-        def put(t: int, comp: str, amt: Decimal):
+        def put(t: int, comp: str, amt: Decimal, mt: MovementType | str = MovementType.OTHER):
             RollforwardLine.objects.update_or_create(
-                result=rs, period_index=t, component=comp,
-                defaults={"amount": amt.quantize(Decimal("0.000001"))},
+                result=rs,
+                period_index=t,
+                component=comp,
+                defaults={
+                    "amount": amt.quantize(Decimal("0.000001")),
+                    "movement_type": MovementType(mt).value if isinstance(mt, str) else mt.value,
+                },
             )
 
+
         # Record t=0
-        put(0, Component.INIT_PV_IN, pv_in)
-        put(0, Component.INIT_PV_OUT, pv_out)
-        put(0, Component.INIT_RA, pv_ra)
-        put(0, Component.INIT_FCF, fcf0)
-        put(0, Component.INIT_CSM, csm0)
-        put(0, Component.INIT_LOSS_COMP, loss0)
+        put(0, Component.INIT_PV_IN, pv_in, MovementType.INIT)
+        put(0, Component.INIT_PV_OUT, pv_out, MovementType.INIT)
+        put(0, Component.INIT_RA, pv_ra, MovementType.INIT)
+        put(0, Component.INIT_FCF, fcf0, MovementType.INIT)
+        put(0, Component.INIT_CSM, csm0, MovementType.INIT)
+        put(0, Component.INIT_LOSS_COMP, loss0, MovementType.INIT)
+
 
         # Equal coverage units (toy)
         cu_share = Decimal("1.0") / Decimal(n)
@@ -173,19 +180,20 @@ class Command(BaseCommand):
             put(t, Component.BEL_CLOSE, bel_close)
 
             # Persist service detail
-            put(t, Component.PREM_CASH, exp_prem)
-            put(t, Component.CLAIMS, exp_claims)
-            put(t, Component.EXPENSES, exp_exp)
-            put(t, Component.ACQ_AMORT, acq_amort)
+            put(t, Component.PREM_CASH, exp_prem, MovementType.SERVICE)
+            put(t, Component.CLAIMS, exp_claims, MovementType.SERVICE)
+            put(t, Component.EXPENSES, exp_exp, MovementType.SERVICE)
+            put(t, Component.ACQ_AMORT, acq_amort, MovementType.SERVICE)
+            put(t, Component.REV_SERVICE, revenue, MovementType.SERVICE)
+            put(t, Component.EXP_SERVICE, service_exp, MovementType.SERVICE)
+            put(t, Component.SRV_RESULT, service_result, MovementType.SERVICE)
 
-            put(t, Component.REV_SERVICE, revenue)
-            put(t, Component.EXP_SERVICE, service_exp)
-            put(t, Component.SRV_RESULT, service_result)
 
             # Persist finance detail
-            put(t, Component.FIN_INT_CSM, csm_int)
-            put(t, Component.FIN_INT_BEL, bel_int)
-            put(t, Component.FIN_RESULT, fin_result)
+            put(t, Component.FIN_INT_CSM, csm_int, MovementType.FINANCE)
+            put(t, Component.FIN_INT_BEL, bel_int, MovementType.FINANCE)
+            put(t, Component.FIN_RESULT, fin_result, MovementType.FINANCE)
+
 
             # roll state
             csm_open = csm_close
